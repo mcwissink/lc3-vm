@@ -61,6 +61,10 @@ void update_flags(uint16_t r)
     }
 }
 
+/* sign_extend
+extends the sign on binary number, if positive, extend 0, otherwise 1 since we are
+using two's complement
+*/
 uint16_t sign_extend(uint16_t x, int bit_count)
 {
     if ((x >> (bit_count - 1)) & 1) {
@@ -80,6 +84,7 @@ int main(int argc, const char* argv[])
     reg[R_PC] = PC_START;
 
     int running = 1;
+    // Opcode impelementation from https://justinmeiners.github.io/lc3-vm/supplies/lc3-isa.pdf
     while (running)
     {
         /* FETCH */
@@ -138,13 +143,36 @@ int main(int argc, const char* argv[])
                 {NOT, 7}
                 break;
             case OP_BR:
-                {BR, 7}
+                {
+                    uint16_t cond_flag = (instr >> 9) & 0x7;
+                    uint16_t pc_offset = sign_extend(instr & 0x1ff, 9);
+                    if (cond_flag & reg[R_COND])
+                    {
+                        reg[R_PC] += pc_offset;
+                    }
+                }
                 break;
             case OP_JMP:
-                {JMP, 7}
+                {
+                    reg[R_PC] = (instr >> 6) & 0x7;
+                }
                 break;
             case OP_JSR:
-                {JSR, 7}
+                {
+                    reg[R_R7] = reg[R_PC];
+                    // flag for JSR or JSRR
+                    uint16_t flag = (instr >> 11) & 1;
+                    if (flag)
+                    {
+                        // Get the extended pc offset
+                        reg[R_PC] = sign_extend(instr & 0x7ff, 11);
+                    }
+                    else
+                    {
+                        // get the BaseR
+                        reg[R_PC] = (instr >> 6) & 0x7;
+                    }
+                }
                 break;
             case OP_LD:
                 {LD, 7}

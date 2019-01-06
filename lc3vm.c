@@ -1,3 +1,18 @@
+// https://justinmeiners.github.io/lc3-vm/
+/* Includes */
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/termios.h>
+#include <sys/mman.h>
+
 uint16_t memory[UINT16_MAX];
 uint16_t reg[R_COUNT];
 
@@ -55,6 +70,12 @@ enum
     TRAP_HALT = 0x25   /* halt the program */
 };
 
+enum
+{
+    MR_KBSR = 0xFE00, /* keyboard status */
+    MR_KBDR = 0xFE02  /* keyboard data */
+};
+
 // Updates the condition flag register
 void update_flags(uint16_t r)
 {
@@ -84,10 +105,93 @@ uint16_t sign_extend(uint16_t x, int bit_count)
     return x;
 }
 
+int read_image(const char* image_path)
+{
+    FILE* file = fopen(image_path, "rb");
+    if (!file) { return 0; };
+    read_image_file(file);
+    fclose(file);
+    return 1;
+}
+
+void read_image_file(FILE* file)
+{
+    /* the origin tells us where in memory to place the image */
+    uint16_t origin;
+    fread(&origin, sizeof(origin), 1, file);
+    origin = swap16(origin);
+
+    /* we know the maximum file size so we only need one fread */
+    uint16_t max_read = UINT16_MAX - origin;
+    uint16_t* p = memory + origin;
+    size_t read = fread(p, sizeof(uint16_t), max_read, file);
+
+    /* swap to little endian */
+    while (read-- > 0)
+    {
+        *p = swap16(*p);
+        ++p;
+    }
+}
+
+uint16_t swap16(uint16_t x)
+{
+    return (x << 8) | (x >> 8);
+}
+
+uint16_t check_key()
+{
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+    return select(1, &readfds, NULL, NULL, &timeout) != 0;
+}
+
+// Memory setter
+void mem_write(uint16_t address, uint16_t val)
+{
+    memory[address] = val;
+}
+
+// Memory getter
+uint16_t mem_read(uint16_t address)
+{
+    if (address == MR_KBSR)
+    {
+        if (check_key())
+        {
+            memory[MR_KBSR] = (1 << 15);
+            memory[MR_KBDR] = getchar();
+        }
+        else
+        {
+            memory[MR_KBSR] = 0;
+        }
+    }
+    return memory[address];
+}
+
 int main(int argc, const char* argv[])
 {
-    {Load Arguments, 12}
-    {Setup, 12}
+    if (argc < 2)
+    {
+        /* show usage string */
+        printf("lc3 [image-file1] ...\n");
+        exit(2);
+    }
+
+    for (int j = 1; j < argc; ++j)
+    {
+        if (!read_image(argv[j]))
+        {
+            printf("failed to load image: %s\n", argv[j]);
+            exit(1);
+        }
+    }
 
     /* set the PC to starting position */
     /* 0x3000 is the default */
@@ -321,5 +425,4 @@ int main(int argc, const char* argv[])
                 break;
         }
     }
-    {Shutdown, 12}
 }

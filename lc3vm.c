@@ -13,9 +13,6 @@
 #include <sys/termios.h>
 #include <sys/mman.h>
 
-uint16_t memory[UINT16_MAX];
-uint16_t reg[R_COUNT];
-
 // The registers
 enum
 {
@@ -50,6 +47,7 @@ enum
     OP_JMP,    // Jump
     OP_RES,    // Reserved (unused)
     OP_LEA,    // Load effective address
+    OP_TRAP,
 };
 
 // Condition flags
@@ -75,6 +73,9 @@ enum
     MR_KBSR = 0xFE00, /* keyboard status */
     MR_KBDR = 0xFE02  /* keyboard data */
 };
+
+uint16_t memory[UINT16_MAX];
+uint16_t reg[R_COUNT];
 
 // Updates the condition flag register
 void update_flags(uint16_t r)
@@ -105,13 +106,9 @@ uint16_t sign_extend(uint16_t x, int bit_count)
     return x;
 }
 
-int read_image(const char* image_path)
+uint16_t swap16(uint16_t x)
 {
-    FILE* file = fopen(image_path, "rb");
-    if (!file) { return 0; };
-    read_image_file(file);
-    fclose(file);
-    return 1;
+    return (x << 8) | (x >> 8);
 }
 
 void read_image_file(FILE* file)
@@ -134,9 +131,13 @@ void read_image_file(FILE* file)
     }
 }
 
-uint16_t swap16(uint16_t x)
+int read_image(const char* image_path)
 {
-    return (x << 8) | (x >> 8);
+    FILE* file = fopen(image_path, "rb");
+    if (!file) { return 0; };
+    read_image_file(file);
+    fclose(file);
+    return 1;
 }
 
 uint16_t check_key()
@@ -228,7 +229,7 @@ int main(int argc, const char* argv[])
                         reg[dr] = reg[sr1] + reg[sr2];
                     }
 
-                    update_flags(r0);
+                    update_flags(dr);
                 }
                 break;
             case OP_AND:
@@ -251,7 +252,7 @@ int main(int argc, const char* argv[])
                         reg[dr] = reg[sr1] & reg[sr2];
                     }
 
-                    update_flags(r0);
+                    update_flags(dr);
                 }
                 break;
             case OP_NOT:

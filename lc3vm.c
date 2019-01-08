@@ -1,3 +1,4 @@
+
 // https://justinmeiners.github.io/lc3-vm/
 /* Includes */
 #include <stdio.h>
@@ -176,6 +177,28 @@ uint16_t mem_read(uint16_t address)
     return memory[address];
 }
 
+struct termios original_tio;
+
+void disable_input_buffering()
+{
+    tcgetattr(STDIN_FILENO, &original_tio);
+    struct termios new_tio = original_tio;
+    new_tio.c_lflag &= ~ICANON & ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
+}
+
+void restore_input_buffering()
+{
+    tcsetattr(STDIN_FILENO, TCSANOW, &original_tio);
+}
+
+void handle_interrupt(int signal)
+{
+    restore_input_buffering();
+    printf("\n");
+    exit(-2);
+}
+
 int main(int argc, const char* argv[])
 {
     if (argc < 2)
@@ -193,6 +216,9 @@ int main(int argc, const char* argv[])
             exit(1);
         }
     }
+    // Setup
+    signal(SIGINT, handle_interrupt);
+    disable_input_buffering();
 
     /* set the PC to starting position */
     /* 0x3000 is the default */
@@ -258,7 +284,7 @@ int main(int argc, const char* argv[])
             case OP_NOT:
                 {
                     uint16_t dr = (instr >> 9) & 0x7;
-                    uint16_t sr = (instr >> 9) & 0x7;
+                    uint16_t sr = (instr >> 6) & 0x7;
                     reg[dr] = ~reg[sr];
                     update_flags(dr);
                 }
@@ -288,7 +314,7 @@ int main(int argc, const char* argv[])
                     if (flag)
                     {
                         // Get the extended pc offset
-                        reg[R_PC] = sign_extend(instr & 0x7ff, 11);
+                        reg[R_PC] += sign_extend(instr & 0x7ff, 11);
                     }
                     else
                     {
@@ -426,4 +452,6 @@ int main(int argc, const char* argv[])
                 break;
         }
     }
+    // Shutdown
+    restore_input_buffering();
 }
